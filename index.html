@@ -165,8 +165,12 @@ details summary{cursor:pointer;color:var(--ink-2);font-size:13px}
     <div class="field">
       <label for="voice">Voice</label>
       <select id="voice"></select>
-      <button type="button" id="btnSpeakTest" class="iconbtn" style="align-self:flex-start">Test speaker</button>
-      <div class="hint">No sound? Flip the iPhone silent switch to ring mode and turn the volume up while this page is open.</div>
+      <div class="row">
+        <button type="button" id="btnSpeakTest" class="iconbtn">Test speaker</button>
+        <button type="button" id="btnVoices" class="iconbtn">Refresh voices</button>
+        <span class="hint" id="voiceCount"></span>
+      </div>
+      <div class="hint">No sound? Flip the iPhone silent switch to ring mode and turn the volume up while this page is open. On iPhone, a downloaded Enhanced voice keeps the same name (for example "Samantha") but sounds better.</div>
     </div>
     <div class="field">
       <label><input type="checkbox" id="wake"> Keep screen awake while talking</label>
@@ -389,13 +393,20 @@ function stopListening(send){
 /* ---------- Text to speech (free, built into the browser) ---------- */
 let voices=[];
 function loadVoices(){
-  voices = (window.speechSynthesis? speechSynthesis.getVoices():[]).filter(v=>/^en/i.test(v.lang));
-  const sel=$("#voice"); sel.innerHTML="";
-  voices.forEach(v=>{ const o=document.createElement("option"); o.value=v.name; o.textContent=v.name+" ("+v.lang+")"; sel.appendChild(o); });
-  if(S.voice && voices.some(v=>v.name===S.voice)) sel.value=S.voice;
-  else { const pref = voices.find(v=>/Samantha|Google US English|Aaron|Daniel/i.test(v.name)) || voices[0]; if(pref){ sel.value=pref.name; } }
+  const all = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  const en = all.filter(v=>/^en/i.test(v.lang));
+  const others = all.filter(v=>!/^en/i.test(v.lang));
+  voices = en.concat(others);
+  const sel=$("#voice"); const keep = sel.value; sel.innerHTML="";
+  const addGroup=(label,list)=>{ if(!list.length) return; const g=document.createElement("optgroup"); g.label=label;
+    list.forEach(v=>{ const o=document.createElement("option"); o.value=v.name; o.textContent=v.name+" ("+v.lang+(v.localService?"":", online")+")"; g.appendChild(o); }); sel.appendChild(g); };
+  addGroup("English", en); addGroup("Other languages", others);
+  const want = keep || S.voice;
+  if(want && voices.some(v=>v.name===want)) sel.value=want;
+  else { const pref = en.find(v=>/Samantha|Ava|Zoe|Evan|Allison|Google US English|Daniel/i.test(v.name)) || en[0]; if(pref) sel.value=pref.name; }
+  const c=$("#voiceCount"); if(c) c.textContent = all.length ? en.length+" English / "+all.length+" total" : "No voices reported yet - tap Refresh";
 }
-if(window.speechSynthesis){ loadVoices(); speechSynthesis.onvoiceschanged=loadVoices; }
+if(window.speechSynthesis){ loadVoices(); speechSynthesis.onvoiceschanged=loadVoices; setTimeout(loadVoices,1500); }
 // iOS only allows audio that starts inside a user tap. Play a silent utterance on the first tap so later replies are allowed.
 let ttsUnlocked=false;
 function unlockTTS(){
@@ -535,6 +546,7 @@ $("#btnTest").addEventListener("click", async ()=>{
   catch(e){ $("#btnTest").textContent="Failed: "+e.message.slice(0,60); }
   Object.assign(S,keep); setTimeout(()=>$("#btnTest").textContent="Test connection",4000);
 });
+$("#btnVoices").addEventListener("click", ()=>{ unlockTTS(); setTimeout(loadVoices,300); });
 $("#btnSpeakTest").addEventListener("click", ()=>{
   ttsUnlocked=true; S.rate=parseFloat($("#rate").value)||0.95;
   const b=$("#btnSpeakTest"); b.textContent="Speaking...";
