@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1a1c">
+<title>Sam Tutor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-screen phone app. Header, scrolling transcript, fixed talk bar at the bottom. */
+:root{
+  --bg:#f3f6f5; --panel:#ffffff; --ink:#15211f; --ink-2:#5d6b68; --line:#d9e2df;
+  --accent:#0f766e; --accent-ink:#ffffff; --me:#e3f1ee; --sam:#ffffff;
+  --warn:#b45309; --warn-bg:#fff4e5; --good:#15803d;
+  --font-display:"Sora",system-ui,sans-serif; --font-body:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg:#0f1a1c; --panel:#162325; --ink:#e8efed; --ink-2:#97a7a3; --line:#28383a;
+  --accent:#2dd4bf; --accent-ink:#06201d; --me:#1b3b38; --sam:#162325;
+  --warn:#fbbf24; --warn-bg:#3a2a08; --good:#4ade80; color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --bg:#0f1a1c; --panel:#162325; --ink:#e8efed; --ink-2:#97a7a3; --line:#28383a;
+  --accent:#2dd4bf; --accent-ink:#06201d; --me:#1b3b38; --sam:#162325;
+  --warn:#fbbf24; --warn-bg:#3a2a08; --good:#4ade80; color-scheme:dark; }
+
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--font-body);
+  display:flex;flex-direction:column;overflow:hidden;
+  padding-top:env(safe-area-inset-top,0px)}
+button{font:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+h1,h2{font-family:var(--font-display);text-wrap:balance;margin:0}
+
+header{display:flex;align-items:center;gap:10px;
+  padding:10px max(16px,env(safe-area-inset-right,0px)) 10px max(16px,env(safe-area-inset-left,0px));
+  border-bottom:1px solid var(--line);background:var(--panel)}
+header h1{font-size:17px;font-weight:700}
+header .sub{font-size:12px;color:var(--ink-2)}
+.spacer{flex:1}
+.iconbtn{background:none;border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:6px 10px;font-size:13px}
+.iconbtn[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+.modes{display:flex;gap:6px;padding:8px max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px))}
+.modes button{flex:1;border:1px solid var(--line);background:var(--panel);color:var(--ink-2);border-radius:999px;padding:7px 0;font-size:13px;font-weight:500}
+.modes button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+
+#log{flex:1;overflow-y:auto;min-height:0;display:flex;flex-direction:column;gap:10px;
+  padding:12px max(16px,env(safe-area-inset-right,0px)) 12px max(16px,env(safe-area-inset-left,0px))}
+.msg{max-width:88%;padding:10px 13px;border-radius:16px;white-space:pre-wrap;word-wrap:break-word;min-width:0}
+.msg.me{align-self:flex-end;background:var(--me);border-bottom-right-radius:4px}
+.msg.sam{align-self:flex-start;background:var(--sam);border:1px solid var(--line);border-bottom-left-radius:4px}
+.msg.sys{align-self:center;background:transparent;color:var(--ink-2);font-size:12.5px;text-align:center;max-width:95%}
+.msg.warn{align-self:stretch;background:var(--warn-bg);color:var(--ink);border-left:3px solid var(--warn);border-radius:8px;font-size:13.5px;max-width:100%}
+.msg .fix{display:block;margin-top:6px;padding:6px 9px;border-radius:8px;background:var(--me);font-size:13.5px}
+.msg.interim{opacity:.6;font-style:italic}
+.stats{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12.5px;color:var(--ink-2);font-variant-numeric:tabular-nums;margin-top:6px}
+.stats b{color:var(--ink);font-weight:600}
+
+#bar{background:var(--panel);border-top:1px solid var(--line);
+  padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  display:flex;flex-direction:column;gap:8px}
+#status{font-size:12.5px;color:var(--ink-2);min-height:18px;text-align:center}
+.row{display:flex;gap:8px;align-items:center}
+#talk{flex:1;height:58px;border-radius:16px;border:none;background:var(--accent);color:var(--accent-ink);
+  font-family:var(--font-display);font-size:17px;font-weight:700;letter-spacing:.01em}
+#talk[data-state="listening"]{background:#dc2626;color:#fff}
+#talk[data-state="thinking"],#talk[data-state="speaking"]{opacity:.7}
+.small{height:58px;min-width:58px;border-radius:16px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:13px;padding:0 10px}
+#typed{display:none;gap:8px}
+#typed input{flex:1;min-width:0;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--bg);color:var(--ink)}
+#typed button{border-radius:12px;border:none;background:var(--accent);color:var(--accent-ink);padding:0 14px;font-weight:600}
+
+/* Settings sheet */
+#sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;z-index:20}
+#sheet[open]{display:flex}
+.panel{background:var(--panel);width:100%;max-height:88%;overflow-y:auto;border-radius:18px 18px 0 0;
+  padding:16px max(16px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
+  display:flex;flex-direction:column;gap:14px}
+.panel h2{font-size:16px}
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-2);font-weight:600}
+.field input,.field select,.field textarea{border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--bg);color:var(--ink);font:inherit;width:100%}
+.field textarea{min-height:120px;font-size:13px;line-height:1.4}
+.field .hint{font-size:12px;color:var(--ink-2)}
+.panel .row button{flex:1;border-radius:12px;padding:11px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-weight:600}
+.panel .row button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+details summary{cursor:pointer;color:var(--ink-2);font-size:13px}
+@media (prefers-reduced-motion:no-preference){ #talk[data-state="listening"]{animation:pulse 1.4s ease-in-out infinite} }
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.35)}50%{box-shadow:0 0 0 10px rgba(220,38,38,0)}}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Sam</h1>
+    <div class="sub" id="subtitle">English tutor - tap Talk and start speaking</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="iconbtn" id="btnHistory" type="button">Log</button>
+  <button class="iconbtn" id="btnSettings" type="button">Settings</button>
+</header>
+
+<div class="modes" role="group" aria-label="Mode">
+  <button type="button" data-mode="chat" aria-pressed="true">Chat</button>
+  <button type="button" data-mode="opic" aria-pressed="false">OPIc test</button>
+</div>
+
+<main id="log" aria-live="polite"></main>
+
+<div id="bar">
+  <div id="status"></div>
+  <div class="row">
+    <button class="small" id="btnKeyboard" type="button" title="Type instead">Aa</button>
+    <button id="talk" type="button" data-state="idle">Talk</button>
+    <button class="small" id="btnWrap" type="button">Wrap up</button>
+  </div>
+  <form id="typed">
+    <input id="typedInput" type="text" placeholder="Type your message" autocomplete="off">
+    <button type="submit">Send</button>
+  </form>
+</div>
+
+<div id="sheet">
+  <div class="panel" role="dialog" aria-label="Settings">
+    <h2>Settings</h2>
+
+    <div class="field">
+      <label for="provider">AI provider</label>
+      <select id="provider">
+        <option value="gemini">Google Gemini (free tier available)</option>
+        <option value="anthropic">Anthropic Claude (pay per use)</option>
+      </select>
+      <div class="hint">Your key is stored only in this browser (localStorage) and sent only to the provider you pick.</div>
+    </div>
+    <div class="field">
+      <label for="apiKey">API key</label>
+      <input id="apiKey" type="password" autocomplete="off" placeholder="Paste your key">
+    </div>
+    <div class="field">
+      <label for="model">Model name</label>
+      <input id="model" type="text" autocomplete="off">
+      <div class="hint">Gemini example: gemini-2.5-flash. Claude example: claude-haiku-5-5. If a model is retired, change it here.</div>
+    </div>
+    <div class="field">
+      <label for="userName">Your name</label>
+      <input id="userName" type="text" value="Jangho">
+    </div>
+    <div class="field">
+      <label for="silence">Auto-send after silence (seconds)</label>
+      <input id="silence" type="number" min="1" max="10" step="0.5" value="3">
+      <div class="hint">Chat mode. In OPIc mode you end the answer by tapping the button.</div>
+    </div>
+    <div class="field">
+      <label for="rate">Sam's voice speed</label>
+      <input id="rate" type="range" min="0.7" max="1.3" step="0.05" value="0.95">
+    </div>
+    <div class="field">
+      <label for="voice">Voice</label>
+      <select id="voice"></select>
+    </div>
+    <div class="field">
+      <label><input type="checkbox" id="wake"> Keep screen awake while talking</label>
+    </div>
+    <details>
+      <summary>Edit Sam's instructions (advanced)</summary>
+      <div class="field" style="margin-top:8px">
+        <textarea id="persona"></textarea>
+        <div class="hint">Leave blank to use the built-in instructions.</div>
+      </div>
+    </details>
+    <div class="row">
+      <button type="button" id="btnTest">Test connection</button>
+      <button type="button" class="primary" id="btnSave">Save</button>
+    </div>
+    <div class="row">
+      <button type="button" id="btnClear">Clear conversation</button>
+      <button type="button" id="btnCloseSheet">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------- Persona ---------- */
+const DEFAULT_PERSONA = `You are "Sam", a friendly English conversation tutor. The learner is {{NAME}}, a Korean professional in his 30s preparing for the OPIc speaking test (current level around IM1, target IH).
+
+HOW TO TALK
+- Speak English at a natural but clear level. Short sentences, everyday vocabulary. Chat like a friendly coworker, not a lecturer.
+- Keep your turns short: 2 to 4 sentences. Then ask ONE follow-up question so he keeps talking. He should talk more than you.
+- React to what he says, share a short opinion of your own, then ask more.
+- Rotate naturally through OPIc-style topics: home, neighborhood, work, shopping, movies, music, travel, exercise, parks, banks, phones, weather, weekend plans, past experiences, past vs now.
+
+HOW TO CORRECT
+- Do NOT correct every mistake. Pick the ONE most important error per turn (tense, article, word choice, or an unfinished sentence) and fix it in one line starting with "Quick fix:" like this:
+  Quick fix: "I go there last week" -> "I went there last week."
+  Then continue the conversation right away. If there is no real error, skip the fix.
+- If he apologizes for his English, says "are you serious?", or puts down his own answer, remind him once, kindly: start with "Let me tell you about..." instead.
+- If his message is very short or trails off, offer a starter phrase he could use.
+- If he writes in Korean, answer briefly in Korean, then return to English.
+
+OUTPUT RULES
+- Plain text only. No markdown, no bullet points, no emojis. Your words are read aloud by a voice synthesizer.
+- Never write long explanations in conversation. Save detail for a wrap-up.`;
+
+const OPIC_EVAL_PROMPT = `You are an OPIc rater. The learner answered the question below. Evaluate the answer and reply in this exact plain-text shape, in English, no markdown:
+
+Level: <one of NL, NM, NH, IL, IM1, IM2, IM3, IH, AL> - <one short reason>
+Biggest gap: <one sentence>
+Fix this: "<their phrase>" -> "<corrected phrase>"
+Try saying: <one or two sentences they could add to make the answer fuller>
+
+Be specific and honest, never harsh. Judge content organization (did they answer what was asked, with details), fluency (self-corrections, trailing off), grammar and vocabulary. Speech statistics are attached; treat long pauses and a low words-per-minute as fluency problems.`;
+
+const WRAPUP_PROMPT = `End the session now. Using the conversation so far, give {{NAME}} a wrap-up in plain text (no markdown), in this shape:
+
+Today's 3 corrections:
+1. "<wrong>" -> "<right>" (<3-word reason>)
+2. ...
+3. ...
+Phrase to memorize: <one useful phrase from today>
+One thing you did well: <one sentence>
+
+Keep it under 10 lines. Then say goodbye in one short sentence.`;
+
+/* ---------- OPIc question bank ---------- */
+const OPIC_QUESTIONS = [
+  ["Home","Tell me about the place where you live. What does it look like? Describe it in as much detail as possible."],
+  ["Home","What is your favorite room in your home? Why do you like it?"],
+  ["Home","Tell me about a time something broke or went wrong at home. What happened and how did you handle it?"],
+  ["Neighborhood","Describe your neighborhood. What kind of places are there, and what do people usually do?"],
+  ["Neighborhood","How has your neighborhood changed over the past few years?"],
+  ["Work","Tell me about your job. What do you do, and what does a typical day look like?"],
+  ["Work","Describe a project at work you remember well. What was it, and why do you remember it?"],
+  ["Shopping","Where do you usually go shopping? Describe the place in detail."],
+  ["Shopping","Tell me about a memorable shopping experience. What did you buy, and why was it memorable?"],
+  ["Shopping","How has the way you shop changed compared to the past?"],
+  ["Movies","What kind of movies do you like? Tell me about a movie you saw recently."],
+  ["Movies","Tell me about a memorable experience at a movie theater."],
+  ["Music","What kind of music do you listen to? When and where do you usually listen?"],
+  ["Music","How has your taste in music changed since you were younger?"],
+  ["Travel","Tell me about a trip you took that you remember well. Where did you go and what did you do?"],
+  ["Travel","What do you usually do to prepare before a trip?"],
+  ["Exercise","Do you exercise? Tell me about the kind of exercise you do and how often."],
+  ["Park","Describe a park you often go to. What does it look like, and what do you do there?"],
+  ["Bank","Tell me about a bank you use. Where is it, what does it look like, and what do you usually do there?"],
+  ["Bank","What steps do you need to follow to open a bank account or get a loan in your country?"],
+  ["Phone","How do you use your phone during a typical day?"],
+  ["Phone","Tell me about a time your phone caused a problem for you. What happened?"],
+  ["Weather","What is the weather like in your country? Tell me about the seasons."],
+  ["Weekend","What do you usually do on weekends? Describe your last weekend."],
+  ["Food","What kind of food do you like? Tell me about a restaurant you went to recently."],
+  ["Reading","Tell me about a book you read recently. What was it about, and why did you choose it?"],
+  ["Role play","I'd like to go to the gym you go to. Ask me three or four questions to find out what I'm looking for."],
+  ["Role play","You bought a jacket online but it arrived in the wrong size. Call the store and explain the problem and what you want them to do."],
+  ["Compare","Compare the way people communicated in the past with how they communicate today."],
+  ["Compare","How is housing today different from housing when you were a child?"]
+];
+
+/* ---------- State ---------- */
+const $ = (s)=>document.querySelector(s);
+const log = $("#log"), status = $("#status"), talk = $("#talk");
+const S = loadSettings();
+let mode = "chat";
+let history = [];           // [{role:"user"|"assistant", text}]
+let listening = false, busy = false, speaking = false;
+let rec = null, interimEl = null, finalBuf = "", silenceTimer = null;
+let opic = null;            // {q, t0, lastResult, pauses, longest, speakingMs}
+let wakeLock = null;
+
+function loadSettings(){
+  const d = {provider:"gemini", apiKey:"", model:"gemini-2.5-flash", userName:"Jangho", silence:3, rate:0.95, voice:"", wake:true, persona:""};
+  try{ Object.assign(d, JSON.parse(localStorage.getItem("sam.settings")||"{}")); }catch(e){}
+  return d;
+}
+function saveSettings(){ try{ localStorage.setItem("sam.settings", JSON.stringify(S)); }catch(e){} }
+function saveLog(entry){
+  try{
+    const arr = JSON.parse(localStorage.getItem("sam.log")||"[]");
+    arr.unshift(entry); localStorage.setItem("sam.log", JSON.stringify(arr.slice(0,100)));
+  }catch(e){}
+}
+
+/* ---------- UI helpers ---------- */
+function add(kind, text){
+  const el = document.createElement("div");
+  el.className = "msg "+kind; el.textContent = text;
+  log.appendChild(el); log.scrollTop = log.scrollHeight; return el;
+}
+function addSam(text){
+  const el = document.createElement("div"); el.className="msg sam";
+  // Highlight "Quick fix:" lines
+  text.split("\n").forEach((line,i)=>{
+    if(/^\s*quick fix:/i.test(line)){ const f=document.createElement("span"); f.className="fix"; f.textContent=line.trim(); el.appendChild(f); }
+    else{ if(i>0 && el.lastChild && el.lastChild.nodeType===3) el.appendChild(document.createTextNode("\n")); el.appendChild(document.createTextNode(line)); }
+  });
+  log.appendChild(el); log.scrollTop = log.scrollHeight; return el;
+}
+function setStatus(t){ status.textContent = t||""; }
+function setState(s){ talk.dataset.state = s;
+  talk.textContent = s==="listening" ? (mode==="opic" ? "Tap when done" : "Listening... tap to send")
+                   : s==="thinking" ? "Sam is thinking" : s==="speaking" ? "Sam is talking (tap to skip)" : (mode==="opic" ? "Answer" : "Talk"); }
+
+/* ---------- Speech recognition (free, built into the browser) ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function startListening(){
+  if(!SR){ add("warn","This browser has no speech recognition. On iPhone use Safari; on Android use Chrome. You can still type with the Aa button."); return; }
+  if(listening || busy) return;
+  stopSpeaking();
+  listening = true; finalBuf = ""; setState("listening"); setStatus("");
+  if(mode==="opic") opic = Object.assign(opic||{}, {t0:Date.now(), lastResult:Date.now(), pauses:0, longest:0, firstWord:0});
+  interimEl = add("me interim","...");
+  runRecognizer();
+}
+function runRecognizer(){
+  try{
+    rec = new SR(); rec.lang="en-US"; rec.interimResults=true; rec.continuous=true; rec.maxAlternatives=1;
+    rec.onresult = (e)=>{
+      let interim="";
+      for(let i=e.resultIndex;i<e.results.length;i++){
+        const r=e.results[i];
+        if(r.isFinal) finalBuf += (finalBuf?" ":"") + r[0].transcript.trim();
+        else interim += r[0].transcript;
+      }
+      const now=Date.now();
+      if(opic && mode==="opic"){
+        if(!opic.firstWord) opic.firstWord = now;
+        const gap = now - opic.lastResult;
+        if(opic.lastResult && gap>1500){ opic.pauses++; opic.longest=Math.max(opic.longest,gap); }
+        opic.lastResult = now;
+      }
+      interimEl.textContent = (finalBuf+" "+interim).trim() || "...";
+      log.scrollTop = log.scrollHeight;
+      if(mode==="chat"){ clearTimeout(silenceTimer); silenceTimer=setTimeout(()=>{ if(listening && finalBuf) stopListening(true); }, S.silence*1000); }
+    };
+    rec.onerror = (e)=>{
+      if(e.error==="not-allowed" || e.error==="service-not-allowed"){ listening=false; setState("idle"); add("warn","Microphone access was blocked. Allow the microphone for this site in Safari settings, then try again."); }
+      // "no-speech" and "aborted" are normal on iOS; onend restarts.
+    };
+    rec.onend = ()=>{ if(listening){ setTimeout(()=>{ if(listening) runRecognizer(); }, 150); } };
+    rec.start();
+  }catch(err){ listening=false; setState("idle"); add("warn","Could not start the microphone: "+err.message); }
+}
+function stopListening(send){
+  listening=false; clearTimeout(silenceTimer);
+  try{ rec && rec.onend && (rec.onend=null); rec && rec.stop(); }catch(e){}
+  const text = finalBuf.trim();
+  if(interimEl){ if(text){ interimEl.className="msg me"; interimEl.textContent=text; } else interimEl.remove(); interimEl=null; }
+  setState("idle");
+  if(send && text) handleUser(text); else if(send) setStatus("I didn't catch anything. Try again.");
+}
+
+/* ---------- Text to speech (free, built into the browser) ---------- */
+let voices=[];
+function loadVoices(){
+  voices = (window.speechSynthesis? speechSynthesis.getVoices():[]).filter(v=>/^en/i.test(v.lang));
+  const sel=$("#voice"); sel.innerHTML="";
+  voices.forEach(v=>{ const o=document.createElement("option"); o.value=v.name; o.textContent=v.name+" ("+v.lang+")"; sel.appendChild(o); });
+  if(S.voice && voices.some(v=>v.name===S.voice)) sel.value=S.voice;
+  else { const pref = voices.find(v=>/Samantha|Google US English|Aaron|Daniel/i.test(v.name)) || voices[0]; if(pref){ sel.value=pref.name; } }
+}
+if(window.speechSynthesis){ loadVoices(); speechSynthesis.onvoiceschanged=loadVoices; }
+function speak(text){
+  return new Promise((resolve)=>{
+    if(!window.speechSynthesis){ resolve(); return; }
+    stopSpeaking();
+    const clean = text.replace(/->/g," becomes ").replace(/["“”]/g,"");
+    const u = new SpeechSynthesisUtterance(clean);
+    const v = voices.find(x=>x.name===($("#voice").value||S.voice)); if(v) u.voice=v;
+    u.lang="en-US"; u.rate=S.rate;
+    speaking=true; setState("speaking");
+    u.onend=u.onerror=()=>{ speaking=false; setState("idle"); resolve(); };
+    speechSynthesis.speak(u);
+    // iOS sometimes never fires onend for long text; safety timeout
+    setTimeout(()=>{ if(speaking){ speaking=false; setState("idle"); resolve(); } }, Math.min(60000, 2000 + clean.length*90));
+  });
+}
+function stopSpeaking(){ if(window.speechSynthesis && speechSynthesis.speaking){ speechSynthesis.cancel(); } speaking=false; }
+
+/* ---------- LLM calls ---------- */
+function persona(){ return (S.persona.trim()||DEFAULT_PERSONA).replace(/{{NAME}}/g, S.userName||"the learner"); }
+async function callLLM(system, msgs){
+  if(!S.apiKey) throw new Error("No API key yet. Open Settings and paste a key.");
+  const trimmed = msgs.slice(-20);
+  if(S.provider==="anthropic"){
+    const r = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+      headers:{"content-type":"application/json","x-api-key":S.apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:S.model, max_tokens:400, system, messages:trimmed.map(m=>({role:m.role, content:m.text}))})});
+    const j = await r.json();
+    if(!r.ok) throw new Error((j.error&&j.error.message)||("HTTP "+r.status));
+    return (j.content||[]).map(c=>c.text||"").join("").trim();
+  }else{
+    const url = "https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(S.model)+":generateContent?key="+encodeURIComponent(S.apiKey);
+    const r = await fetch(url,{method:"POST",headers:{"content-type":"application/json"},
+      body:JSON.stringify({system_instruction:{parts:[{text:system}]},
+        contents:trimmed.map(m=>({role:m.role==="assistant"?"model":"user", parts:[{text:m.text}]})),
+        generationConfig:{maxOutputTokens:400, temperature:0.8}})});
+    const j = await r.json();
+    if(!r.ok) throw new Error((j.error&&j.error.message)||("HTTP "+r.status));
+    const parts = (((j.candidates||[])[0]||{}).content||{}).parts||[];
+    return parts.map(p=>p.text||"").join("").trim();
+  }
+}
+
+/* ---------- Conversation flow ---------- */
+async function handleUser(text){
+  if(busy) return; busy=true; setState("thinking"); setStatus("");
+  try{
+    if(mode==="opic" && opic && opic.q){
+      const stats = opicStats(text);
+      const el = log.lastElementChild; if(el && el.classList.contains("me")){ const s=document.createElement("div"); s.className="stats"; s.innerHTML=stats.html; el.appendChild(s); }
+      const msgs=[{role:"user", text:"Question: "+opic.q+"\n\nAnswer (speech transcript): "+text+"\n\nSpeech statistics: "+stats.text}];
+      const reply = await callLLM(OPIC_EVAL_PROMPT, msgs);
+      addSam(reply); saveLog({t:Date.now(), mode:"opic", q:opic.q, a:text, stats:stats.text, eval:reply});
+      busy=false; await speak(reply);
+      opic.q=null; setStatus("Tap Answer for the next question.");
+    }else{
+      history.push({role:"user", text});
+      const reply = await callLLM(persona(), history);
+      history.push({role:"assistant", text:reply});
+      addSam(reply); busy=false; await speak(reply);
+      setStatus("Your turn. Tap Talk.");
+    }
+  }catch(err){ busy=false; setState("idle"); add("warn", "Sam couldn't answer: "+err.message); }
+  busy=false; if(!speaking) setState("idle");
+}
+function opicStats(text){
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const total = Math.max(1,(Date.now()-opic.t0)/1000);
+  const wpm = Math.round(words/(total/60));
+  const html = `<span><b>${Math.round(total)}s</b> total</span><span><b>${words}</b> words</span><span><b>${wpm}</b> wpm</span><span><b>${opic.pauses}</b> pauses over 1.5s</span><span>longest <b>${(opic.longest/1000).toFixed(1)}s</b></span>`;
+  const t = `${Math.round(total)} seconds, ${words} words, ${wpm} words per minute, ${opic.pauses} pauses longer than 1.5 s, longest pause ${(opic.longest/1000).toFixed(1)} s. (Pauses are estimated from recognizer timing.)`;
+  return {html, text:t};
+}
+async function askOpicQuestion(){
+  const [cat,q] = OPIC_QUESTIONS[Math.floor(Math.random()*OPIC_QUESTIONS.length)];
+  opic = {q, cat};
+  add("sys", cat);
+  addSam(q);
+  setStatus("Listen, then tap Answer. Speak for 1 to 2 minutes, then tap again.");
+  await speak(q);
+}
+async function wrapUp(){
+  if(mode!=="chat" || history.length<2){ setStatus("Nothing to wrap up yet."); return; }
+  if(busy) return; busy=true; setState("thinking");
+  try{
+    const msgs = history.concat([{role:"user", text:WRAPUP_PROMPT.replace(/{{NAME}}/g,S.userName)}]);
+    const reply = await callLLM(persona(), msgs);
+    addSam(reply); saveLog({t:Date.now(), mode:"chat", turns:history.length, summary:reply});
+    history=[]; busy=false; await speak(reply); setStatus("Session saved to Log. Tap Talk to start a new one.");
+  }catch(err){ busy=false; add("warn","Wrap-up failed: "+err.message); }
+  busy=false; setState("idle");
+}
+
+/* ---------- Buttons ---------- */
+talk.addEventListener("click", async ()=>{
+  if(speaking){ stopSpeaking(); setState("idle"); return; }
+  if(busy) return;
+  if(mode==="opic"){
+    if(listening){ stopListening(true); return; }
+    if(!opic || !opic.q){ await askOpicQuestion(); return; }
+    startListening(); return;
+  }
+  if(listening) stopListening(true); else startListening();
+});
+document.querySelectorAll(".modes button").forEach(b=>b.addEventListener("click",()=>{
+  if(listening) stopListening(false); stopSpeaking();
+  mode=b.dataset.mode; document.querySelectorAll(".modes button").forEach(x=>x.setAttribute("aria-pressed", x===b));
+  opic=null; setState("idle");
+  $("#subtitle").textContent = mode==="opic" ? "OPIc practice - one question, one full answer, then a rating" : "English tutor - tap Talk and start speaking";
+  add("sys", mode==="opic" ? "OPIc mode. Tap Answer to get a question." : "Chat mode. Sam will reply after you pause.");
+  $("#btnWrap").hidden = mode==="opic";
+}));
+$("#btnWrap").addEventListener("click", wrapUp);
+$("#btnKeyboard").addEventListener("click", ()=>{ const f=$("#typed"); f.style.display = f.style.display==="flex"?"none":"flex"; if(f.style.display==="flex") $("#typedInput").focus(); });
+$("#typed").addEventListener("submit",(e)=>{ e.preventDefault(); const v=$("#typedInput").value.trim(); if(!v) return; $("#typedInput").value="";
+  if(mode==="opic" && !(opic&&opic.q)){ setStatus("Tap Answer to get a question first."); return; }
+  if(mode==="opic"){ opic.t0=Date.now(); opic.pauses=0; opic.longest=0; }
+  add("me", v); handleUser(v); });
+
+/* ---------- Settings sheet ---------- */
+const sheet=$("#sheet");
+function openSheet(){
+  $("#provider").value=S.provider; $("#apiKey").value=S.apiKey; $("#model").value=S.model; $("#userName").value=S.userName;
+  $("#silence").value=S.silence; $("#rate").value=S.rate; $("#wake").checked=S.wake; $("#persona").value=S.persona; loadVoices();
+  sheet.setAttribute("open","");
+}
+$("#btnSettings").addEventListener("click", openSheet);
+$("#btnCloseSheet").addEventListener("click", ()=>sheet.removeAttribute("open"));
+$("#provider").addEventListener("change",()=>{ const p=$("#provider").value; if(!$("#model").value || /gemini|claude/i.test($("#model").value)) $("#model").value = p==="gemini"?"gemini-2.5-flash":"claude-haiku-5-5"; });
+$("#btnSave").addEventListener("click", ()=>{
+  S.provider=$("#provider").value; S.apiKey=$("#apiKey").value.trim(); S.model=$("#model").value.trim(); S.userName=$("#userName").value.trim()||"Jangho";
+  S.silence=Math.max(1,parseFloat($("#silence").value)||3); S.rate=parseFloat($("#rate").value)||0.95; S.voice=$("#voice").value; S.wake=$("#wake").checked; S.persona=$("#persona").value;
+  saveSettings(); sheet.removeAttribute("open"); setStatus("Saved."); requestWake();
+});
+$("#btnTest").addEventListener("click", async ()=>{
+  const keep={...S}; S.provider=$("#provider").value; S.apiKey=$("#apiKey").value.trim(); S.model=$("#model").value.trim();
+  $("#btnTest").textContent="Testing...";
+  try{ const r=await callLLM("Reply with the single word OK.",[{role:"user",text:"ping"}]); $("#btnTest").textContent="Works: "+r.slice(0,20); }
+  catch(e){ $("#btnTest").textContent="Failed: "+e.message.slice(0,60); }
+  Object.assign(S,keep); setTimeout(()=>$("#btnTest").textContent="Test connection",4000);
+});
+$("#btnClear").addEventListener("click", ()=>{ history=[]; opic=null; log.innerHTML=""; sheet.removeAttribute("open"); add("sys","Conversation cleared."); });
+
+/* ---------- Log view ---------- */
+$("#btnHistory").addEventListener("click", ()=>{
+  let arr=[]; try{ arr=JSON.parse(localStorage.getItem("sam.log")||"[]"); }catch(e){}
+  if(!arr.length){ add("sys","No saved sessions yet. Chat wrap-ups and OPIc ratings are saved here."); return; }
+  const lines = arr.slice(0,10).map(e=>{
+    const d=new Date(e.t).toLocaleString();
+    return e.mode==="opic" ? `${d}  OPIc\nQ: ${e.q}\n${e.stats}\n${e.eval}` : `${d}  Chat (${e.turns} turns)\n${e.summary}`;
+  }).join("\n\n----------\n\n");
+  const el=add("warn", lines);
+  const b=document.createElement("button"); b.className="iconbtn"; b.textContent="Copy all"; b.style.marginTop="8px";
+  b.addEventListener("click",()=>{ navigator.clipboard.writeText(lines).then(()=>b.textContent="Copied").catch(()=>{ const r=document.createRange(); r.selectNodeContents(el); getSelection().removeAllRanges(); getSelection().addRange(r); }); });
+  el.appendChild(b);
+});
+
+/* ---------- Wake lock ---------- */
+async function requestWake(){
+  if(!S.wake || !("wakeLock" in navigator)) return;
+  try{ wakeLock = await navigator.wakeLock.request("screen"); }catch(e){}
+}
+document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") requestWake(); });
+talk.addEventListener("click", requestWake, {once:true});
+
+/* ---------- First paint ---------- */
+$("#btnWrap").hidden=false;
+if(!S.apiKey){ add("warn","Welcome. Open Settings, pick a provider, paste your API key, tap Test connection, then Save. After that, tap Talk."); }
+else add("sys","Tap Talk and say hi to Sam.");
+if(!SR) add("warn","Speech recognition is not available in this browser. On iPhone, open this page in Safari.");
+})();
+</script>
+</body>
+</html>
