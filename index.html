@@ -74,8 +74,18 @@ header .sub{font-size:12px;color:var(--ink-2)}
 #typed button{border-radius:12px;border:none;background:var(--accent);color:var(--accent-ink);padding:0 14px;font-weight:600}
 
 /* Settings sheet */
-#sheet{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;z-index:20}
-#sheet[open]{display:flex}
+#sheet,.sheetlike{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;z-index:20}
+#sheet[open],.sheetlike[open]{display:flex}
+.sess{border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.sess summary{padding:10px 12px;cursor:pointer;display:flex;gap:10px;align-items:baseline;font-size:13.5px}
+.sess summary b{font-weight:600}
+.sess summary .meta{color:var(--ink-2);font-size:12px;margin-left:auto;font-variant-numeric:tabular-nums}
+.sess .body{padding:0 12px 12px;display:flex;flex-direction:column;gap:6px}
+.sess .line{font-size:13.5px;white-space:pre-wrap;padding:6px 9px;border-radius:8px;min-width:0}
+.sess .line.u{background:var(--me)}
+.sess .line.a{background:var(--panel);border:1px solid var(--line)}
+.sess .line.s{color:var(--ink-2);font-size:12.5px;padding:2px 0}
+.sess .tools{display:flex;gap:6px;margin-top:4px}
 .panel{background:var(--panel);width:100%;max-height:88%;overflow-y:auto;border-radius:18px 18px 0 0;
   padding:16px max(16px,env(safe-area-inset-right,0px)) calc(20px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));
   display:flex;flex-direction:column;gap:14px}
@@ -100,6 +110,7 @@ details summary{cursor:pointer;color:var(--ink-2);font-size:13px}
     <div class="sub" id="subtitle">English tutor - tap Talk and start speaking</div>
   </div>
   <div class="spacer"></div>
+  <button class="iconbtn" id="btnNew" type="button" title="Start a new session">New</button>
   <button class="iconbtn" id="btnHistory" type="button">Log</button>
   <button class="iconbtn" id="btnSettings" type="button">Settings</button>
 </header>
@@ -129,21 +140,14 @@ details summary{cursor:pointer;color:var(--ink-2);font-size:13px}
     <h2>Settings</h2>
 
     <div class="field">
-      <label for="provider">AI provider</label>
-      <select id="provider">
-        <option value="gemini">Google Gemini (free tier available)</option>
-        <option value="anthropic">Anthropic Claude (pay per use)</option>
-      </select>
-      <div class="hint">Your key is stored only in this browser (localStorage) and sent only to the provider you pick.</div>
-    </div>
-    <div class="field">
-      <label for="apiKey">API key</label>
-      <input id="apiKey" type="password" autocomplete="off" placeholder="Paste your key">
+      <label for="apiKey">Anthropic API key</label>
+      <input id="apiKey" type="password" autocomplete="off" placeholder="sk-ant-...">
+      <div class="hint">Get one at console.anthropic.com. The key is stored only in this browser and sent only to api.anthropic.com. API content is not used for model training under Anthropic's commercial terms.</div>
     </div>
     <div class="field">
       <label for="model">Model name</label>
       <input id="model" type="text" autocomplete="off">
-      <div class="hint">Gemini example: gemini-2.5-flash. Claude example: claude-haiku-5-5. If a model is retired, change it here.</div>
+      <div class="hint">claude-haiku-5-5 is the cheapest and fast enough for chat. Use claude-sonnet-5-5 if you want sharper OPIc ratings. If a model is retired, change the name here.</div>
     </div>
     <div class="field">
       <label for="userName">Your name</label>
@@ -161,6 +165,8 @@ details summary{cursor:pointer;color:var(--ink-2);font-size:13px}
     <div class="field">
       <label for="voice">Voice</label>
       <select id="voice"></select>
+      <button type="button" id="btnSpeakTest" class="iconbtn" style="align-self:flex-start">Test speaker</button>
+      <div class="hint">No sound? Flip the iPhone silent switch to ring mode and turn the volume up while this page is open.</div>
     </div>
     <div class="field">
       <label><input type="checkbox" id="wake"> Keep screen awake while talking</label>
@@ -177,9 +183,21 @@ details summary{cursor:pointer;color:var(--ink-2);font-size:13px}
       <button type="button" class="primary" id="btnSave">Save</button>
     </div>
     <div class="row">
-      <button type="button" id="btnClear">Clear conversation</button>
+      <button type="button" id="btnClear">Delete all saved sessions</button>
       <button type="button" id="btnCloseSheet">Close</button>
     </div>
+  </div>
+</div>
+
+<div id="logSheet" class="sheetlike">
+  <div class="panel" role="dialog" aria-label="Saved sessions">
+    <div class="row" style="align-items:center">
+      <h2 style="flex:1">Saved sessions</h2>
+      <button type="button" class="iconbtn" id="btnExport">Copy all</button>
+      <button type="button" class="iconbtn" id="btnCloseLog">Close</button>
+    </div>
+    <div class="hint">Everything is saved on this phone only. Copy all and paste into Notes now and then as a backup.</div>
+    <div id="sessions" style="display:flex;flex-direction:column;gap:8px"></div>
   </div>
 </div>
 
@@ -274,16 +292,29 @@ let opic = null;            // {q, t0, lastResult, pauses, longest, speakingMs}
 let wakeLock = null;
 
 function loadSettings(){
-  const d = {provider:"gemini", apiKey:"", model:"gemini-2.5-flash", userName:"Jangho", silence:3, rate:0.95, voice:"", wake:true, persona:""};
+  const d = {apiKey:"", model:"claude-haiku-5-5", userName:"Jangho", silence:3, rate:0.95, voice:"", wake:true, persona:""};
   try{ Object.assign(d, JSON.parse(localStorage.getItem("sam.settings")||"{}")); }catch(e){}
+  if(!/^claude/i.test(d.model||"")) d.model="claude-haiku-5-5";
   return d;
 }
 function saveSettings(){ try{ localStorage.setItem("sam.settings", JSON.stringify(S)); }catch(e){} }
-function saveLog(entry){
-  try{
-    const arr = JSON.parse(localStorage.getItem("sam.log")||"[]");
-    arr.unshift(entry); localStorage.setItem("sam.log", JSON.stringify(arr.slice(0,100)));
-  }catch(e){}
+
+/* ---------- Session store (everything stays in this browser) ---------- */
+// sessions: newest first. Each: {id, started, items:[{k:"u"|"a"|"s"|"q"|"e", text, t, stats?}]}
+let sessions=[], cur=null;
+function loadSessions(){ try{ sessions = JSON.parse(localStorage.getItem("sam.sessions")||"[]"); }catch(e){ sessions=[]; } if(!Array.isArray(sessions)) sessions=[]; }
+function persist(){ try{ localStorage.setItem("sam.sessions", JSON.stringify(sessions.slice(0,60))); }catch(e){ setStatus("Could not save (storage full or blocked)."); } }
+function newSession(){ cur={id:Date.now(), started:Date.now(), items:[]}; sessions.unshift(cur); persist(); }
+function record(k, text, extra){
+  if(!cur || !text) return;
+  cur.items.push(Object.assign({k, text, t:Date.now()}, extra||{}));
+  persist();
+}
+function fmtDate(t){ const d=new Date(t); return d.toLocaleDateString(undefined,{month:"short",day:"numeric"})+" "+d.toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"}); }
+function sessionText(s){
+  return "Session "+fmtDate(s.started)+"\n"+s.items.map(i=>
+    i.k==="u" ? "Me: "+i.text : i.k==="a" ? "Sam: "+i.text : i.k==="q" ? "[OPIc question] "+i.text : i.k==="e" ? "[Rating] "+i.text+(i.stats?"\n("+i.stats+")":"") : "- "+i.text
+  ).join("\n");
 }
 
 /* ---------- UI helpers ---------- */
@@ -365,19 +396,29 @@ function loadVoices(){
   else { const pref = voices.find(v=>/Samantha|Google US English|Aaron|Daniel/i.test(v.name)) || voices[0]; if(pref){ sel.value=pref.name; } }
 }
 if(window.speechSynthesis){ loadVoices(); speechSynthesis.onvoiceschanged=loadVoices; }
+// iOS only allows audio that starts inside a user tap. Play a silent utterance on the first tap so later replies are allowed.
+let ttsUnlocked=false;
+function unlockTTS(){
+  if(ttsUnlocked || !window.speechSynthesis) return;
+  try{ const u=new SpeechSynthesisUtterance(" "); u.volume=0; speechSynthesis.speak(u); ttsUnlocked=true; }catch(e){}
+}
+let currentUtter=null; // keep a reference: iOS garbage-collects utterances mid-speech otherwise
 function speak(text){
   return new Promise((resolve)=>{
     if(!window.speechSynthesis){ resolve(); return; }
     stopSpeaking();
     const clean = text.replace(/->/g," becomes ").replace(/["“”]/g,"");
-    const u = new SpeechSynthesisUtterance(clean);
+    const u = new SpeechSynthesisUtterance(clean); currentUtter=u;
     const v = voices.find(x=>x.name===($("#voice").value||S.voice)); if(v) u.voice=v;
-    u.lang="en-US"; u.rate=S.rate;
+    u.lang="en-US"; u.rate=S.rate; u.volume=1;
     speaking=true; setState("speaking");
-    u.onend=u.onerror=()=>{ speaking=false; setState("idle"); resolve(); };
-    speechSynthesis.speak(u);
+    let done=false; const finish=()=>{ if(done) return; done=true; speaking=false; currentUtter=null; setState("idle"); resolve(); };
+    u.onend=finish;
+    u.onerror=(e)=>{ if(e.error && e.error!=="interrupted" && e.error!=="canceled") setStatus("Voice error: "+e.error+". Check the silent switch and volume."); finish(); };
+    // Safari sometimes drops an utterance queued right after cancel(); a short delay avoids it.
+    setTimeout(()=>{ try{ speechSynthesis.resume(); speechSynthesis.speak(u); }catch(err){ finish(); } }, 120);
     // iOS sometimes never fires onend for long text; safety timeout
-    setTimeout(()=>{ if(speaking){ speaking=false; setState("idle"); resolve(); } }, Math.min(60000, 2000 + clean.length*90));
+    setTimeout(finish, Math.min(60000, 2500 + clean.length*90));
   });
 }
 function stopSpeaking(){ if(window.speechSynthesis && speechSynthesis.speaking){ speechSynthesis.cancel(); } speaking=false; }
@@ -387,24 +428,12 @@ function persona(){ return (S.persona.trim()||DEFAULT_PERSONA).replace(/{{NAME}}
 async function callLLM(system, msgs){
   if(!S.apiKey) throw new Error("No API key yet. Open Settings and paste a key.");
   const trimmed = msgs.slice(-20);
-  if(S.provider==="anthropic"){
-    const r = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
-      headers:{"content-type":"application/json","x-api-key":S.apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:S.model, max_tokens:400, system, messages:trimmed.map(m=>({role:m.role, content:m.text}))})});
-    const j = await r.json();
-    if(!r.ok) throw new Error((j.error&&j.error.message)||("HTTP "+r.status));
-    return (j.content||[]).map(c=>c.text||"").join("").trim();
-  }else{
-    const url = "https://generativelanguage.googleapis.com/v1beta/models/"+encodeURIComponent(S.model)+":generateContent?key="+encodeURIComponent(S.apiKey);
-    const r = await fetch(url,{method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({system_instruction:{parts:[{text:system}]},
-        contents:trimmed.map(m=>({role:m.role==="assistant"?"model":"user", parts:[{text:m.text}]})),
-        generationConfig:{maxOutputTokens:400, temperature:0.8}})});
-    const j = await r.json();
-    if(!r.ok) throw new Error((j.error&&j.error.message)||("HTTP "+r.status));
-    const parts = (((j.candidates||[])[0]||{}).content||{}).parts||[];
-    return parts.map(p=>p.text||"").join("").trim();
-  }
+  const r = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+    headers:{"content-type":"application/json","x-api-key":S.apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model:S.model, max_tokens:400, system, messages:trimmed.map(m=>({role:m.role, content:m.text}))})});
+  const j = await r.json();
+  if(!r.ok) throw new Error((j.error&&j.error.message)||("HTTP "+r.status));
+  return (j.content||[]).map(c=>c.text||"").join("").trim();
 }
 
 /* ---------- Conversation flow ---------- */
@@ -414,15 +443,16 @@ async function handleUser(text){
     if(mode==="opic" && opic && opic.q){
       const stats = opicStats(text);
       const el = log.lastElementChild; if(el && el.classList.contains("me")){ const s=document.createElement("div"); s.className="stats"; s.innerHTML=stats.html; el.appendChild(s); }
+      record("u", text, {stats:stats.text});
       const msgs=[{role:"user", text:"Question: "+opic.q+"\n\nAnswer (speech transcript): "+text+"\n\nSpeech statistics: "+stats.text}];
       const reply = await callLLM(OPIC_EVAL_PROMPT, msgs);
-      addSam(reply); saveLog({t:Date.now(), mode:"opic", q:opic.q, a:text, stats:stats.text, eval:reply});
+      addSam(reply); record("e", reply, {stats:stats.text});
       busy=false; await speak(reply);
       opic.q=null; setStatus("Tap Answer for the next question.");
     }else{
-      history.push({role:"user", text});
+      history.push({role:"user", text}); record("u", text);
       const reply = await callLLM(persona(), history);
-      history.push({role:"assistant", text:reply});
+      history.push({role:"assistant", text:reply}); record("a", reply);
       addSam(reply); busy=false; await speak(reply);
       setStatus("Your turn. Tap Talk.");
     }
@@ -441,7 +471,7 @@ async function askOpicQuestion(){
   const [cat,q] = OPIC_QUESTIONS[Math.floor(Math.random()*OPIC_QUESTIONS.length)];
   opic = {q, cat};
   add("sys", cat);
-  addSam(q);
+  addSam(q); record("q", cat+": "+q);
   setStatus("Listen, then tap Answer. Speak for 1 to 2 minutes, then tap again.");
   await speak(q);
 }
@@ -451,14 +481,15 @@ async function wrapUp(){
   try{
     const msgs = history.concat([{role:"user", text:WRAPUP_PROMPT.replace(/{{NAME}}/g,S.userName)}]);
     const reply = await callLLM(persona(), msgs);
-    addSam(reply); saveLog({t:Date.now(), mode:"chat", turns:history.length, summary:reply});
-    history=[]; busy=false; await speak(reply); setStatus("Session saved to Log. Tap Talk to start a new one.");
+    addSam(reply); record("s", "Wrap-up"); record("a", reply);
+    busy=false; await speak(reply); setStatus("Saved. Tap New in the top bar to start a fresh session.");
   }catch(err){ busy=false; add("warn","Wrap-up failed: "+err.message); }
   busy=false; setState("idle");
 }
 
 /* ---------- Buttons ---------- */
 talk.addEventListener("click", async ()=>{
+  unlockTTS();
   if(speaking){ stopSpeaking(); setState("idle"); return; }
   if(busy) return;
   if(mode==="opic"){
@@ -486,40 +517,84 @@ $("#typed").addEventListener("submit",(e)=>{ e.preventDefault(); const v=$("#typ
 /* ---------- Settings sheet ---------- */
 const sheet=$("#sheet");
 function openSheet(){
-  $("#provider").value=S.provider; $("#apiKey").value=S.apiKey; $("#model").value=S.model; $("#userName").value=S.userName;
+  $("#apiKey").value=S.apiKey; $("#model").value=S.model; $("#userName").value=S.userName;
   $("#silence").value=S.silence; $("#rate").value=S.rate; $("#wake").checked=S.wake; $("#persona").value=S.persona; loadVoices();
   sheet.setAttribute("open","");
 }
 $("#btnSettings").addEventListener("click", openSheet);
 $("#btnCloseSheet").addEventListener("click", ()=>sheet.removeAttribute("open"));
-$("#provider").addEventListener("change",()=>{ const p=$("#provider").value; if(!$("#model").value || /gemini|claude/i.test($("#model").value)) $("#model").value = p==="gemini"?"gemini-2.5-flash":"claude-haiku-5-5"; });
 $("#btnSave").addEventListener("click", ()=>{
-  S.provider=$("#provider").value; S.apiKey=$("#apiKey").value.trim(); S.model=$("#model").value.trim(); S.userName=$("#userName").value.trim()||"Jangho";
+  S.apiKey=$("#apiKey").value.trim(); S.model=$("#model").value.trim()||"claude-haiku-5-5"; S.userName=$("#userName").value.trim()||"Jangho";
   S.silence=Math.max(1,parseFloat($("#silence").value)||3); S.rate=parseFloat($("#rate").value)||0.95; S.voice=$("#voice").value; S.wake=$("#wake").checked; S.persona=$("#persona").value;
   saveSettings(); sheet.removeAttribute("open"); setStatus("Saved."); requestWake();
 });
 $("#btnTest").addEventListener("click", async ()=>{
-  const keep={...S}; S.provider=$("#provider").value; S.apiKey=$("#apiKey").value.trim(); S.model=$("#model").value.trim();
+  const keep={...S}; S.apiKey=$("#apiKey").value.trim(); S.model=$("#model").value.trim()||"claude-haiku-5-5";
   $("#btnTest").textContent="Testing...";
   try{ const r=await callLLM("Reply with the single word OK.",[{role:"user",text:"ping"}]); $("#btnTest").textContent="Works: "+r.slice(0,20); }
   catch(e){ $("#btnTest").textContent="Failed: "+e.message.slice(0,60); }
   Object.assign(S,keep); setTimeout(()=>$("#btnTest").textContent="Test connection",4000);
 });
-$("#btnClear").addEventListener("click", ()=>{ history=[]; opic=null; log.innerHTML=""; sheet.removeAttribute("open"); add("sys","Conversation cleared."); });
+$("#btnSpeakTest").addEventListener("click", ()=>{
+  ttsUnlocked=true; S.rate=parseFloat($("#rate").value)||0.95;
+  const b=$("#btnSpeakTest"); b.textContent="Speaking...";
+  speak("Hi, this is Sam. If you can hear this, the speaker works.").then(()=>{ b.textContent="Test speaker"; });
+});
+// Two-tap delete: first tap arms, second tap within 4 s deletes.
+let clearArmed=false;
+$("#btnClear").addEventListener("click", ()=>{
+  const b=$("#btnClear");
+  if(!clearArmed){ clearArmed=true; b.textContent="Tap again to delete everything"; setTimeout(()=>{ clearArmed=false; b.textContent="Delete all saved sessions"; },4000); return; }
+  sessions=[]; persist(); clearArmed=false; b.textContent="Delete all saved sessions";
+  startFresh(); sheet.removeAttribute("open"); add("sys","All saved sessions deleted.");
+});
+
+/* ---------- New session ---------- */
+function startFresh(){
+  if(listening) stopListening(false); stopSpeaking();
+  history=[]; opic=null; log.innerHTML=""; newSession(); setState("idle");
+  add("sys", mode==="opic" ? "New session. Tap Answer to get a question." : "New session. Tap Talk and say hi to Sam.");
+}
+$("#btnNew").addEventListener("click", ()=>{
+  // Don't pile up empty sessions
+  if(cur && cur.items.length===0){ add("sys","This session is still empty."); return; }
+  startFresh();
+});
 
 /* ---------- Log view ---------- */
-$("#btnHistory").addEventListener("click", ()=>{
-  let arr=[]; try{ arr=JSON.parse(localStorage.getItem("sam.log")||"[]"); }catch(e){}
-  if(!arr.length){ add("sys","No saved sessions yet. Chat wrap-ups and OPIc ratings are saved here."); return; }
-  const lines = arr.slice(0,10).map(e=>{
-    const d=new Date(e.t).toLocaleString();
-    return e.mode==="opic" ? `${d}  OPIc\nQ: ${e.q}\n${e.stats}\n${e.eval}` : `${d}  Chat (${e.turns} turns)\n${e.summary}`;
-  }).join("\n\n----------\n\n");
-  const el=add("warn", lines);
-  const b=document.createElement("button"); b.className="iconbtn"; b.textContent="Copy all"; b.style.marginTop="8px";
-  b.addEventListener("click",()=>{ navigator.clipboard.writeText(lines).then(()=>b.textContent="Copied").catch(()=>{ const r=document.createRange(); r.selectNodeContents(el); getSelection().removeAllRanges(); getSelection().addRange(r); }); });
-  el.appendChild(b);
-});
+const logSheet=$("#logSheet");
+function copyText(text, btn){
+  navigator.clipboard.writeText(text).then(()=>{ const o=btn.textContent; btn.textContent="Copied"; setTimeout(()=>btn.textContent=o,1500); })
+    .catch(()=>{ btn.textContent="Copy failed - select the text instead"; });
+}
+function renderSessions(){
+  const box=$("#sessions"); box.innerHTML="";
+  const list=sessions.filter(s=>s.items.length);
+  if(!list.length){ const p=document.createElement("div"); p.className="hint"; p.textContent="No saved sessions yet. Every chat turn and OPIc rating is saved automatically."; box.appendChild(p); return; }
+  list.forEach((s,idx)=>{
+    const d=document.createElement("details"); d.className="sess"; if(idx===0) d.open=true;
+    const turns=s.items.filter(i=>i.k==="u").length, ratings=s.items.filter(i=>i.k==="e").length;
+    const sum=document.createElement("summary");
+    const b=document.createElement("b"); b.textContent=fmtDate(s.started); sum.appendChild(b);
+    const m=document.createElement("span"); m.className="meta"; m.textContent=turns+" turns"+(ratings?" / "+ratings+" rated":""); sum.appendChild(m);
+    d.appendChild(sum);
+    const body=document.createElement("div"); body.className="body";
+    s.items.forEach(i=>{
+      const l=document.createElement("div"); l.className="line "+(i.k==="u"?"u":i.k==="s"?"s":i.k==="q"?"s":"a");
+      l.textContent = i.k==="q" ? "Q: "+i.text : i.k==="e" ? i.text+(i.stats?"\n("+i.stats+")":"") : i.text;
+      body.appendChild(l);
+    });
+    const tools=document.createElement("div"); tools.className="tools";
+    const c=document.createElement("button"); c.className="iconbtn"; c.textContent="Copy"; c.addEventListener("click",()=>copyText(sessionText(s),c)); tools.appendChild(c);
+    const del=document.createElement("button"); del.className="iconbtn"; del.textContent="Delete";
+    del.addEventListener("click",()=>{ if(del.dataset.armed){ sessions=sessions.filter(x=>x!==s); if(cur===s) startFresh(); persist(); renderSessions(); } else { del.dataset.armed="1"; del.textContent="Tap again"; setTimeout(()=>{ del.dataset.armed=""; del.textContent="Delete"; },3000); } });
+    tools.appendChild(del);
+    body.appendChild(tools); d.appendChild(body); box.appendChild(d);
+  });
+}
+$("#btnHistory").addEventListener("click", ()=>{ renderSessions(); logSheet.setAttribute("open",""); });
+$("#btnCloseLog").addEventListener("click", ()=>logSheet.removeAttribute("open"));
+$("#btnExport").addEventListener("click", ()=>copyText(sessions.filter(s=>s.items.length).map(sessionText).join("\n\n==========\n\n"), $("#btnExport")));
 
 /* ---------- Wake lock ---------- */
 async function requestWake(){
@@ -529,10 +604,28 @@ async function requestWake(){
 document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") requestWake(); });
 talk.addEventListener("click", requestWake, {once:true});
 
-/* ---------- First paint ---------- */
+/* ---------- First paint: restore the last session ---------- */
 $("#btnWrap").hidden=false;
-if(!S.apiKey){ add("warn","Welcome. Open Settings, pick a provider, paste your API key, tap Test connection, then Save. After that, tap Talk."); }
-else add("sys","Tap Talk and say hi to Sam.");
+loadSessions();
+const last = sessions[0];
+const RESUME_HOURS = 12;
+if(last && last.items.length && (Date.now()-last.items[last.items.length-1].t) < RESUME_HOURS*3600*1000){
+  cur = last;
+  add("sys","Continuing your session from "+fmtDate(last.started)+". Tap New for a fresh one.");
+  last.items.forEach(i=>{
+    if(i.k==="u"){ add("me", i.text); history.push({role:"user", text:i.text}); }
+    else if(i.k==="a"){ addSam(i.text); history.push({role:"assistant", text:i.text}); }
+    else if(i.k==="q"){ add("sys", i.text); }
+    else if(i.k==="e"){ addSam(i.text); }
+    else add("sys", i.text);
+  });
+  // Keep the model's memory to the last 20 turns; the full log stays on screen.
+  history = history.slice(-20);
+}else{
+  newSession();
+}
+if(!S.apiKey){ add("warn","Welcome. Open Settings, paste your Anthropic API key, tap Test connection, then Save. After that, tap Talk."); }
+else if(!last || !last.items.length) add("sys","Tap Talk and say hi to Sam.");
 if(!SR) add("warn","Speech recognition is not available in this browser. On iPhone, open this page in Safari.");
 })();
 </script>
